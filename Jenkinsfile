@@ -1,53 +1,52 @@
 pipeline {
-    agent {
-        docker {
-            image 'docker:24.0.2'
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
-        }
+    agent any
+
+    environment {
+        AWS_REGION = "ap-south-1"
+        AWS_ACCOUNT_ID = "525390918172"
+        ECR_URL = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
     }
 
     stages {
 
-        stage('Check Docker') {
+        stage('Build Backend Image') {
             steps {
-                sh 'docker version'
+                bat 'docker build -t backend-app ./backend'
             }
         }
 
-        stage('Build Backend') {
+        stage('Build Frontend Image') {
             steps {
-                sh 'docker build -t backend-app -f backend/Dockerfile .'
+                bat 'docker build -t frontend-app ./frontend'
             }
         }
 
-        stage('Build Frontend') {
+        stage('Login to AWS ECR') {
             steps {
-                sh 'docker build -t frontend-app -f frontend/Dockerfile .'
+                bat """
+                aws ecr get-login-password --region %AWS_REGION% |
+                docker login --username AWS --password-stdin %ECR_URL%
+                """
             }
         }
 
-        stage('Login to ECR') {
+        stage('Tag Images') {
             steps {
-                sh '''
-                aws ecr get-login-password --region ap-south-1 | \
-                docker login --username AWS --password-stdin <ECR_URL>
-                '''
+                bat """
+                docker tag backend-app %ECR_URL%/backend-app:latest
+                docker tag frontend-app %ECR_URL%/frontend-app:latest
+                """
             }
         }
 
-        stage('Push Images') {
+        stage('Push Images to ECR') {
             steps {
-                sh '''
-                docker tag backend-app 525390918172.dkr.ecr.ap-south-1.amazonaws.com/chat-backend:latest
-docker tag frontend-app 525390918172.dkr.ecr.ap-south-1.amazonaws.com/chat-frontend:latest
-
-docker push 525390918172.dkr.ecr.ap-south-1.amazonaws.com/chat-backend:latest
-docker push 525390918172.dkr.ecr.ap-south-1.amazonaws.com/chat-frontend:latest
-
-                '''
+                bat """
+                docker push %ECR_URL%/backend-app:latest
+                docker push %ECR_URL%/frontend-app:latest
+                """
             }
         }
     }
 }
-
 
